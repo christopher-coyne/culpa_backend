@@ -23,12 +23,12 @@ app.get('/search/:term', (req, res) => {
 })
 
 app.get('/test/:term', (req, res) => {
-  const sql = format("SELECT courses.name, courses.course_id FROM courses WHERE courses.name LIKE '%%%s%%' UNION SELECT pro;", req.params.term, req.params.term)
+  const sql = format("SELECT courses.name AS name, courses.course_id AS id, '1' as type FROM courses WHERE courses.name LIKE '%%%s%%' UNION ALL SELECT professors.name, professors.prof_id, professors.nugget FROM professors WHERE professors.name LIKE '%%%s%%';", req.params.term, req.params.term)
   console.log('sql format : ', sql)
   client.query(sql).then((result, err) => {
       console.log('res ', result)
       console.log('err ', err)
-      res.json({'courses': result.rows})
+      res.json({'courseProfs': result.rows})
       // console.log('erros ? ', x)
     }).catch((e) => {
       console.log('error', e)
