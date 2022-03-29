@@ -84,8 +84,49 @@ app.get('/match-term-all/:term', (req, res) => {
 
 app.post('/submit', (req, res) => {
   console.log('body of post : ', req.body)
+  const errors = {'professor': false, 'course': false, 'workload': false, 'content': false}
 
-  res.json({'professor': false, 'course': false, 'workload': false, 'content': false})
+  // make sure workload and content exist
+  if (!req.body.workload) {
+    console.log('errors in workload ! ')
+    errors.workload = true
+  }
+  if (!req.body.content) {
+    console.log('errors in content ! ')
+    errors.content = true
+  }
+
+  // 1 - professor exists, 2 - course exists
+  const sql_prof = format("SELECT * FROM professors WHERE professors.name = '%s';", req.body.professor)
+  const sql_course = format("SELECT * FROM courses WHERE courses.name ='%s';", req.body.course)
+
+  console.log('sql prof ', sql_prof)
+  console.log('sql course ', sql_course)
+
+  // if professor exists and course exists but prof doesn't teach course, flag here and add in database
+  client.query(sql_prof).then((result, err) => {
+    console.log('res ', result)
+    console.log('err ', err)
+
+    if (result.rows.length == 0) {
+      errors.professor = true
+    }
+  
+    client.query(sql_course).then((result, err) => {
+      console.log('res ', result)
+      console.log('err ', err)
+      if (result.rows.length == 0) {
+        errors.course = true
+      }
+      res.json(errors)
+    })
+  })
+
+  /*
+  to do - query prof and course combo. if it exists - create the review and add.
+  if it doesn't exist, create the table in the db THEN create and add review
+  */
+
 })
 
 app.listen(5000, console.log('server running on port 5000'))
