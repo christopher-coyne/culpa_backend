@@ -129,4 +129,13 @@ app.post('/submit', (req, res) => {
 
 })
 
+app.get('/get-popular-courses-full', (req, res) => {
+  // const sql = format("SELECT courses.name, reviews.date from courses INNER JOIN reviews ON reviews.course_id = courses.course_id WHERE courses.name IN ('operating systems i', 'introduction to databases', 'programming languages and translators', 'artificial intelligence', 'analysis of algorithms i', 'user interface design')")
+  fs.readFile('./fileTest.json', 'utf8', function(err, data) {
+    const data_json = JSON.parse(data)
+    console.log('returning data json : ', data_json)
+    res.json({'results': data_json})
+  })
+})
+
 app.listen(5000, console.log('server running on port 5000'))
