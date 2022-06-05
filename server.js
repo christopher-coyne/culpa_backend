@@ -20,6 +20,39 @@ const client = new Client({
 });
 client.connect();
 
+const months = {
+  January: 1,
+  February: 2,
+  March: 3,
+  April: 4,
+  May: 5,
+  June: 6,
+  July: 7,
+  August: 8,
+  September: 9,
+  October: 10,
+  November: 11,
+  December: 12,
+};
+const recentSort = (a, b) => {
+  const adate = a.date.replace(",", "").split(" ");
+  const bdate = b.date.replace(",", "").split(" ");
+
+  if (parseInt(adate[2]) !== parseInt(bdate[2])) {
+    return parseInt(bdate[2]) - parseInt(adate[2]);
+  }
+  // month
+  if (months[adate[0]] !== months[bdate[0]]) {
+    return months[bdate[0]] - months[adate[0]];
+  }
+  // day
+  if (parseInt(adate[1]) !== parseInt(bdate[1])) {
+    return parseInt(bdate[1]) - parseInt(adate[1]);
+  }
+
+  return bdate;
+};
+
 app.get("/search-prof-name/:term", (req, res) => {
   const sql = format(
     "SELECT professors.name, professors.prof_id, professors.nugget FROM professors WHERE professors.name LIKE '%%%s%%%';",
@@ -74,7 +107,8 @@ app.get("/get-professor-reviews/:term", (req, res) => {
   const return_value = { professor: {}, reviews: [] };
 
   client.query(sql).then((result, err) => {
-    return_value.reviews = result.rows;
+    const valid_revs = result.rows.filter((rev) => rev.name !== "0");
+    return_value.reviews = valid_revs;
     client.query(sql2).then((result, err) => {
       return_value.professor = result.rows;
       res.json({ results: return_value });
@@ -102,7 +136,8 @@ app.get("/get-course-reviews/:term", (req, res) => {
   const return_value = { course: {}, reviews: [] };
 
   client.query(sql).then((result, err) => {
-    return_value.reviews = result.rows;
+    const valid_revs = result.rows.filter((rev) => rev.name !== "0");
+    return_value.reviews = valid_revs;
     client.query(sql2).then((result, err) => {
       return_value.course = result.rows;
       res.json({ results: return_value });
@@ -559,4 +594,4 @@ app.get("/get-scatter", (req, res) => {
   */
 });
 
-app.listen(10001, console.log("server running on port 5000"));
+app.listen(10001, console.log("server running on port 10001"));
