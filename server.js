@@ -4,6 +4,7 @@ const format = require("pg-format");
 const bodyParser = require("body-parser");
 const { Pool, Client } = require("pg");
 const fs = require("fs");
+const asyncHandler = require("express-async-handler");
 
 const app = express();
 
@@ -53,69 +54,98 @@ const recentSort = (a, b) => {
   return bdate;
 };
 
-app.get("/search-prof-name/:term", (req, res) => {
-  const sql = format(
-    "SELECT professors.name, professors.prof_id, professors.nugget FROM professors WHERE professors.name LIKE '%%%s%%%';",
-    req.params.term
-  );
-  console.log("sql : ", sql);
-  client.query(sql).then((result, err) => {
-    console.log("results : ", result);
+app.get(
+  "/search_prof_name/:term",
+  asyncHandler(async (req, res, next) => {
+    const sql = format(
+      "SELECT professors.name, professors.prof_id, professors.nugget FROM professors WHERE professors.name LIKE '%%%s%%%';",
+      req.params.term
+    );
+    const result = await client.query(sql);
+    console.log("res : ", result);
     res.json({ profs: result.rows });
-  });
-});
+  })
+);
 
-app.get("/search-course-name/:term", (req, res) => {
-  const sql = format(
-    "SELECT courses.name, courses.course_id FROM courses WHERE courses.name LIKE '%%%s%%%';",
-    req.params.term
-  );
-  console.log("sql : ", sql);
-  client.query(sql).then((result, err) => {
-    console.log("results : ", result);
+app.get(
+  "/search_course_name/:term",
+  asyncHandler(async (req, res, next) => {
+    const sql = format(
+      "SELECT courses.name, courses.course_id FROM courses WHERE courses.name LIKE '%%%s%%%';",
+      req.params.term
+    );
+    const result = await client.query(sql);
+    console.log("res : ", result);
     res.json({ courses: result.rows });
-  });
-});
+  })
+);
 
-app.get("/get-all-profs", (req, res) => {
-  const sql = format(
-    "SELECT professors.name, professors.prof_id, professors.nugget FROM professors;"
-  );
-  client.query(sql).then((result, err) => {
-    console.log("results : ", result);
+app.get(
+  "/get-all-profs",
+  asyncHandler(async (req, res, next) => {
+    const sql = format(
+      "SELECT professors.name, professors.prof_id, professors.nugget FROM professors;"
+    );
+    const result = await client.query(sql);
+    console.log("res : ", result);
     res.json({ profs: result.rows });
-  });
-});
+  })
+);
 
-app.get("/get-professor-reviews/:term", (req, res) => {
-  // const sql_reviews = format("SELECT professors.name, professors.prof_id, professors.nugget FROM professors WHERE professors.name LIKE '%%%s%%';", req.params.term)
-  // const prof_data = format("SELECT professors.name, professors.prof_id, professors.nugget FROM professors WHERE professors.name LIKE '%%%s%%';", req.params.term)
+app.get(
+  "/get-professor-reviews/:term",
+  asyncHandler(async (req, res, next) => {
+    // return professor info, the reviews, and the names of the courses,
+    const reviews_sql = format(
+      "SELECT reviews.agree, reviews.disagree, reviews.content, reviews.workload, reviews.date, courses.name, courses.course_id from reviews INNER JOIN courses ON courses.course_id = reviews.course_id WHERE reviews.prof_id = '%s';",
+      req.params.term
+    );
+    const prof_sql = format(
+      "SELECT * from professors WHERE professors.prof_id = '%s';",
+      req.params.term
+    );
 
-  // want to return professor info, the reviews, and the names of the courses,
+    const return_value = { professor: {}, reviews: [] };
 
-  // for now, try to find all data on all tables
-  // const sql = format("SELECT * from reviews WHERE reviews.prof_id = '%s';", req.params.term)
-  const sql = format(
-    "SELECT reviews.agree, reviews.disagree, reviews.content, reviews.workload, reviews.date, courses.name, courses.course_id from reviews INNER JOIN courses ON courses.course_id = reviews.course_id WHERE reviews.prof_id = '%s';",
-    req.params.term
-  );
-  const sql2 = format(
-    "SELECT * from professors WHERE professors.prof_id = '%s';",
-    req.params.term
-  );
+    const results = await Promise.all([
+      client.query(reviews_sql),
+      client.query(prof_sql),
+    ]);
 
-  const return_value = { professor: {}, reviews: [] };
-
-  client.query(sql).then((result, err) => {
-    const valid_revs = result.rows.filter((rev) => rev.name !== "0");
+    const valid_revs = results[0].rows.filter((rev) => rev.name !== "0");
     return_value.reviews = valid_revs;
-    client.query(sql2).then((result, err) => {
-      return_value.professor = result.rows;
-      res.json({ results: return_value });
-    });
-  });
-});
+    return_value.professor = results[1].rows;
+    res.json({ results: return_value });
+  })
+);
 
+app.get(
+  "/get-course-reviews/:term",
+  asyncHandler(async (req, res, next) => {
+    // return professor info, the reviews, and the names of the courses,
+    const reviews_sql = format(
+      "SELECT reviews.agree, reviews.disagree, reviews.content, reviews.workload, reviews.date, professors.name, professors.prof_id from reviews INNER JOIN professors ON professors.prof_id = reviews.prof_id WHERE reviews.course_id = '%s';",
+      req.params.term
+    );
+    const course_sql = format(
+      "SELECT * from courses WHERE courses.course_id = '%s';",
+      req.params.term
+    );
+
+    const return_value = { course: {}, reviews: [] };
+
+    const results = await Promise.all([
+      client.query(reviews_sql),
+      client.query(course_sql),
+    ]);
+
+    return_value.reviews = results[0].rows;
+    return_value.course = results[1].rows;
+    res.json({ results: return_value });
+  })
+);
+
+/*
 app.get("/get-course-reviews/:term", (req, res) => {
   // const sql_reviews = format("SELECT professors.name, professors.prof_id, professors.nugget FROM professors WHERE professors.name LIKE '%%%s%%';", req.params.term)
   // const prof_data = format("SELECT professors.name, professors.prof_id, professors.nugget FROM professors WHERE professors.name LIKE '%%%s%%';", req.params.term)
@@ -144,29 +174,79 @@ app.get("/get-course-reviews/:term", (req, res) => {
     });
   });
 });
+*/
 
-app.get("/match-term-all/:term", (req, res) => {
-  const sql = format(
-    "SELECT courses.name AS name, courses.course_id AS id, 'course' as type FROM courses WHERE courses.name LIKE '%%%s%%' UNION ALL SELECT professors.name, professors.prof_id, professors.nugget FROM professors WHERE professors.name LIKE '%%%s%%';",
-    req.params.term,
-    req.params.term
-  );
-  console.log("sql format : ", sql);
-  client
-    .query(sql)
-    .then((result, err) => {
-      console.log("res ", result);
-      console.log("err ", err);
-      res.json({ results: result.rows });
-      // console.log('erros ? ', x)
-    })
-    .catch((e) => {
-      console.log("error", e);
+app.get(
+  "/match-term-all/:term",
+  asyncHandler(async (req, res, next) => {
+    const sql = format(
+      "SELECT courses.name AS name, courses.course_id AS id, 'course' as type FROM courses WHERE courses.name LIKE '%%%s%%' UNION ALL SELECT professors.name, professors.prof_id, professors.nugget FROM professors WHERE professors.name LIKE '%%%s%%';",
+      req.params.term,
+      req.params.term
+    );
+
+    const result = await client.query(sql);
+    res.json({ results: result.rows });
+  })
+);
+
+/*
+const checkExistence = (prof, course) => {
+  return new Promise((resolve, reject) => {
+    db_errors = { professor: false, course: false };
+    const sql_prof = format(
+      "SELECT * FROM professors WHERE professors.name = '%s';",
+      prof
+    );
+    const sql_course = format(
+      "SELECT * FROM courses WHERE courses.name ='%s';",
+      course
+    );
+
+    client.query(sql_prof).then((result, err) => {
+      if (result.rows.length == 0) {
+        db_errors.professor = true;
+      }
+
+      client.query(sql_course).then((result, err) => {
+        if (result.rows.length == 0) {
+          errors.course = true;
+        }
+
+        console.log("db errors : ", db_errors);
+        resolve(db_errors);
+      });
     });
-});
+  });
+};
+
+const createPost = (prof, course) => {
+  return new Promise((resolve, reject) => {
+    const sql_teaches_course = format(
+      "SELECT * FROM teaches_course WHERE teaches_course.course_id = '%s' AND teaches_course.prof_id ='%s';",
+      req.body.course,
+      req.body.professor
+    );
+
+     const sql_make_teaches_course = format(
+      "INSERT INTO teaches_course(prof_id, course_id) VALUES ('Cardinal', 'Tom B. Erichsen', 'Skagen 21', 'Stavanger', '4006', 'Norway');",
+      req.body.course,
+      req.body.professor
+    );
+
+    client.query(sql_teaches_in).then((result, err) => {
+      if (result.rows.length === 0) {
+        return true
+      }
+      if 
+  })
+}
+}
 
 app.post("/submit", (req, res) => {
   console.log("body of post : ", req.body);
+  let prof_results;
+  let prof_already_teaches = false;
   const errors = {
     professor: false,
     course: false,
@@ -184,43 +264,13 @@ app.post("/submit", (req, res) => {
     errors.content = true;
   }
 
-  // 1 - professor exists, 2 - course exists
-  const sql_prof = format(
-    "SELECT * FROM professors WHERE professors.name = '%s';",
-    req.body.professor
-  );
-  const sql_course = format(
-    "SELECT * FROM courses WHERE courses.name ='%s';",
-    req.body.course
-  );
+  checkExistence(req.body.professor, req.body.course).then((result, err) => {
+    console.log("res : ", result);
+    // if errors, return. else 
+  }).then((result, err) => { createPost(req.body.professor, req.body.course) })
 
-  console.log("sql prof ", sql_prof);
-  console.log("sql course ", sql_course);
-
-  // if professor exists and course exists but prof doesn't teach course, flag here and add in database
-  client.query(sql_prof).then((result, err) => {
-    console.log("res ", result);
-    console.log("err ", err);
-
-    if (result.rows.length == 0) {
-      errors.professor = true;
-    }
-
-    client.query(sql_course).then((result, err) => {
-      console.log("res ", result);
-      console.log("err ", err);
-      if (result.rows.length == 0) {
-        errors.course = true;
-      }
-      res.json(errors);
-    });
-  });
-
-  /*
-  to do - query prof and course combo. if it exists - create the review and add.
-  if it doesn't exist, create the table in the db THEN create and add review
-  */
 });
+*/
 
 app.get("/get-popular-courses-full", (req, res) => {
   // const sql = format("SELECT courses.name, reviews.date from courses INNER JOIN reviews ON reviews.course_id = courses.course_id WHERE courses.name IN ('operating systems i', 'introduction to databases', 'programming languages and translators', 'artificial intelligence', 'analysis of algorithms i', 'user interface design')")
