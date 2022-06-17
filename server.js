@@ -35,27 +35,9 @@ const months = {
   November: 11,
   December: 12,
 };
-const recentSort = (a, b) => {
-  const adate = a.date.replace(",", "").split(" ");
-  const bdate = b.date.replace(",", "").split(" ");
-
-  if (parseInt(adate[2]) !== parseInt(bdate[2])) {
-    return parseInt(bdate[2]) - parseInt(adate[2]);
-  }
-  // month
-  if (months[adate[0]] !== months[bdate[0]]) {
-    return months[bdate[0]] - months[adate[0]];
-  }
-  // day
-  if (parseInt(adate[1]) !== parseInt(bdate[1])) {
-    return parseInt(bdate[1]) - parseInt(adate[1]);
-  }
-
-  return bdate;
-};
 
 app.get(
-  "/search_prof_name/:term",
+  "/search-prof-name/:term",
   asyncHandler(async (req, res, next) => {
     const sql = format(
       "SELECT professors.name, professors.prof_id, professors.nugget FROM professors WHERE professors.name LIKE '%%%s%%%';",
@@ -68,7 +50,7 @@ app.get(
 );
 
 app.get(
-  "/search_course_name/:term",
+  "/search-course-name/:term",
   asyncHandler(async (req, res, next) => {
     const sql = format(
       "SELECT courses.name, courses.course_id FROM courses WHERE courses.name LIKE '%%%s%%%';",
@@ -190,87 +172,109 @@ app.get(
   })
 );
 
-/*
-const checkExistence = (prof, course) => {
-  return new Promise((resolve, reject) => {
-    db_errors = { professor: false, course: false };
-    const sql_prof = format(
-      "SELECT * FROM professors WHERE professors.name = '%s';",
-      prof
-    );
-    const sql_course = format(
-      "SELECT * FROM courses WHERE courses.name ='%s';",
-      course
-    );
+const checkExistence = async (prof, course, db_errors) => {
+  const sql_prof = format(
+    "SELECT * FROM professors WHERE professors.name = '%s';",
+    prof
+  );
+  const sql_course = format(
+    "SELECT * FROM courses WHERE courses.name ='%s';",
+    course
+  );
 
-    client.query(sql_prof).then((result, err) => {
-      if (result.rows.length == 0) {
-        db_errors.professor = true;
-      }
-
-      client.query(sql_course).then((result, err) => {
-        if (result.rows.length == 0) {
-          errors.course = true;
-        }
-
-        console.log("db errors : ", db_errors);
-        resolve(db_errors);
-      });
-    });
-  });
+  const existenceResults = await Promise.all([
+    client.query(sql_prof),
+    client.query(sql_course),
+  ]);
+  console.log("existence results : ", existenceResults);
+  if (existenceResults[0].rows.length == 0) {
+    db_errors.professor = true;
+  }
+  if (existenceResults[1].rows.length == 0) {
+    db_errors.course = true;
+  }
+  return db_errors;
 };
 
-const createPost = (prof, course) => {
-  return new Promise((resolve, reject) => {
-    const sql_teaches_course = format(
-      "SELECT * FROM teaches_course WHERE teaches_course.course_id = '%s' AND teaches_course.prof_id ='%s';",
-      req.body.course,
-      req.body.professor
-    );
+// req.body.workload, req.body.content, req.body.professor, req.body.course
+const createPost = async (workload, content, professor, course) => {
+  // create a new random id for our new review. chances of collision are near zero
+  const newReviewId = Math.random().toString(36).slice(2);
+  const sql_teaches_course = format(
+    "SELECT * FROM teaches_course WHERE teaches_course.course_id = '%s' AND teaches_course.prof_id ='%s';",
+    course,
+    professor
+  );
 
-     const sql_make_teaches_course = format(
-      "INSERT INTO teaches_course(prof_id, course_id) VALUES ('Cardinal', 'Tom B. Erichsen', 'Skagen 21', 'Stavanger', '4006', 'Norway');",
-      req.body.course,
-      req.body.professor
-    );
+  const sql_make_teaches_course = format(
+    "INSERT INTO teaches_course(prof_id, course_id) VALUES ('%s', '%s');",
+    professor,
+    course
+  );
 
-    client.query(sql_teaches_in).then((result, err) => {
-      if (result.rows.length === 0) {
-        return true
-      }
-      if 
+  /*
+    const sql_create_review = format(
+      "INSERT INTO reviews(review_id, date, content, workload, agree, disagree, prof_id, course_id) VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s',);",
+      newReviewId,
+      ,
+      professor,
+      course
+    );
+    */
+
+  const teaches_course = await client.query(sql_teaches_course);
+
+  // doesn't already exist, have to make it
+  if (!teaches_course) {
+    await client.query(sql_make_teaches_course);
+  }
+
+  // now create the actual review
+  const results = await client.query(sql_create_review);
+};
+
+app.post(
+  "/submit",
+  asyncHandler(async (req, res, next) => {
+    console.log("body of post : ", req.body);
+    let prof_results;
+    let prof_already_teaches = false;
+    let errors = {
+      professor: false,
+      course: false,
+      workload: false,
+      content: false,
+    };
+
+    // make sure workload and content exist
+    if (!req.body.workload) {
+      console.log("errors in workload ! ");
+      errors.workload = true;
+    }
+    if (!req.body.content) {
+      console.log("errors in content ! ");
+      errors.content = true;
+    }
+
+    // makes sure that the professor and course provided exist in the db
+    await checkExistence(req.body.professor, req.body.course, errors);
+
+    if (
+      errors.workload ||
+      errors.professor ||
+      errors.course ||
+      errors.content
+    ) {
+      res.json({ errors: errors });
+    }
+
+    // otherwise - we are good to add it.
+    else {
+      // await createPost(req.body.workload, req.body.content, req.body.professor, req.body.course)
+      res.json({ errors: errors });
+    }
   })
-}
-}
-
-app.post("/submit", (req, res) => {
-  console.log("body of post : ", req.body);
-  let prof_results;
-  let prof_already_teaches = false;
-  const errors = {
-    professor: false,
-    course: false,
-    workload: false,
-    content: false,
-  };
-
-  // make sure workload and content exist
-  if (!req.body.workload) {
-    console.log("errors in workload ! ");
-    errors.workload = true;
-  }
-  if (!req.body.content) {
-    console.log("errors in content ! ");
-    errors.content = true;
-  }
-
-  checkExistence(req.body.professor, req.body.course).then((result, err) => {
-    console.log("res : ", result);
-    // if errors, return. else 
-  }).then((result, err) => { createPost(req.body.professor, req.body.course) })
-
-});
-*/
+);
 
 app.get("/get-popular-courses-full", (req, res) => {
   // const sql = format("SELECT courses.name, reviews.date from courses INNER JOIN reviews ON reviews.course_id = courses.course_id WHERE courses.name IN ('operating systems i', 'introduction to databases', 'programming languages and translators', 'artificial intelligence', 'analysis of algorithms i', 'user interface design')")
