@@ -53,8 +53,36 @@ app.get(
         "DELETE FROM reviews WHERE reviews.review_id = '%s';",
         result.review_id
       );
-      deleted.push(result.review_id);
+      deleted.push({
+        review_id: result.review_id,
+        prof_id: result.prof_id,
+        course_id: result.course_id,
+      });
       await client.query(removeSql);
+    }
+
+    /*
+     * For each deleted review, check to see if there are other reviews with the same
+     * course_id and professor_id. If so, then continue. Otherwise, there is now an empty
+     * page associated with the teaches_course table, which we can safely delete.
+     */
+    for (const review of deleted) {
+      const checkReviewsSql = format(
+        "SELECT reviews.review_id FROM reviews WHERE reviews.prof_id = '%s' AND reviews.course_id = '%s';",
+        review.prof_id,
+        review.course_id
+      );
+      const removeTeachesCourseSql = format(
+        "DELETE FROM teaches_course WHERE teaches_course.prof_id = '%s' AND teaches_course.course_id = '%s';",
+        review.prof_id,
+        review.course_id
+      );
+
+      let res = await client.query(checkReviewsSql);
+
+      if (res.rows.length === 0) {
+        await client.query(removeTeachesCourseSql);
+      }
     }
 
     res.json({ res: deleted });
@@ -104,7 +132,7 @@ app.get(
   asyncHandler(async (req, res, next) => {
     // return professor info, the reviews, and the names of the courses,
     const reviews_sql = format(
-      "SELECT reviews.agree, reviews.disagree, reviews.content, reviews.workload, reviews.date, courses.name, courses.course_id from reviews INNER JOIN courses ON courses.course_id = reviews.course_id WHERE reviews.prof_id = '%s';",
+      "SELECT reviews.agree, reviews.disagree, reviews.content, reviews.workload, reviews.date, reviews.review_id, courses.name, courses.course_id from reviews INNER JOIN courses ON courses.course_id = reviews.course_id WHERE reviews.prof_id = '%s';",
       req.params.term
     );
     const prof_sql = format(
@@ -131,7 +159,7 @@ app.get(
   asyncHandler(async (req, res, next) => {
     // return professor info, the reviews, and the names of the courses,
     const reviews_sql = format(
-      "SELECT reviews.agree, reviews.disagree, reviews.content, reviews.workload, reviews.date, professors.name, professors.prof_id from reviews INNER JOIN professors ON professors.prof_id = reviews.prof_id WHERE reviews.course_id = '%s';",
+      "SELECT reviews.agree, reviews.disagree, reviews.content, reviews.workload, reviews.date, reviews.review_id, professors.name, professors.prof_id from reviews INNER JOIN professors ON professors.prof_id = reviews.prof_id WHERE reviews.course_id = '%s';",
       req.params.term
     );
     const course_sql = format(
@@ -282,14 +310,15 @@ const createPost = async (workload, content, errors, ids) => {
   console.log(teaches_course.rows);
 
   // doesn't already exist, have to make it
-  /*
   if (!teaches_course) {
     await client.query(sql_make_teaches_course);
   }
-  */
 
   // now create the actual review
   const results = await client.query(sql_create_review);
+  errors.createdReview.review_id = newReviewId;
+  errors.createdReview.prof_id = ids.professor;
+  errors.createdReview.course_id = ids.course;
   console.log("results from creation : ", results);
 };
 
@@ -330,13 +359,13 @@ app.post(
       errors.course ||
       errors.content
     ) {
-      res.json({ errors: errors });
+      res.json({ ...errors });
     }
 
     // otherwise - we are good to add it.
     else {
       await createPost(req.body.workload, req.body.content, errors, ids);
-      res.json({ errors: errors });
+      res.json({ ...errors });
     }
   })
 );
