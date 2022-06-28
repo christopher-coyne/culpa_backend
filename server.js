@@ -12,6 +12,7 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 
 /* postgresql stuff */
+/*
 const client = new Client({
   user: "postgres",
   host: "culpa.cl1fcgklxgqn.us-west-2.rds.amazonaws.com",
@@ -20,6 +21,45 @@ const client = new Client({
   port: 5432,
 });
 client.connect();
+*/
+const client = new Client({
+  user: "postgres",
+  host: "culpa.cl1fcgklxgqn.us-west-2.rds.amazonaws.com",
+  database: "postgres",
+  password: "lemonpassword17",
+  port: 5432,
+});
+client.connect();
+/* process.env.DB_HOST */
+/*
+const db_info = {
+  user: "postgres",
+  host: "db",
+  password: "password",
+  port: 5432,
+  database: "postgres",
+};
+*/
+
+/*
+console.log("db info : ", db_info);
+const client = new Client(db_info);
+
+const connections = async () => {
+  setTimeout(() => {
+    console.log("connecting...");
+    client.connect();
+  }, 30000);
+};
+connections();
+*/
+
+app.get(
+  "/hello-world",
+  asyncHandler(async (req, res, next) => {
+    res.json({ courses: "hello world" });
+  })
+);
 
 const months = {
   January: 1,
@@ -86,6 +126,54 @@ app.get(
     }
 
     res.json({ res: deleted });
+  })
+);
+
+app.post(
+  "/remove-post/:term",
+  asyncHandler(async (req, res, next) => {
+    console.log("term : ", req.params.term);
+    req.params.term;
+    const sql = format(
+      "SELECT * FROM reviews WHERE reviews.review_id = '%s' AND reviews.date LIKE '%2022%';",
+      req.params.term
+    );
+
+    console.log("sql : ", sql);
+
+    let results = (await client.query(sql)).rows[0];
+    console.log("results : ", results);
+
+    const removeSql = format(
+      "DELETE FROM reviews WHERE reviews.review_id = '%s';",
+      results.review_id
+    );
+    const { data } = await client.query(removeSql);
+    console.log("data ", data);
+
+    /*
+     * For each deleted review, check to see if there are other reviews with the same
+     * course_id and professor_id. If so, then continue. Otherwise, there is now an empty
+     * page associated with the teaches_course table, which we can safely delete.
+     */
+    const checkReviewsSql = format(
+      "SELECT reviews.review_id FROM reviews WHERE reviews.prof_id = '%s' AND reviews.course_id = '%s';",
+      results.prof_id,
+      results.course_id
+    );
+    const removeTeachesCourseSql = format(
+      "DELETE FROM teaches_course WHERE teaches_course.prof_id = '%s' AND teaches_course.course_id = '%s';",
+      results.prof_id,
+      results.course_id
+    );
+
+    results = await client.query(checkReviewsSql);
+
+    if (results.rows.length === 0) {
+      await client.query(removeTeachesCourseSql);
+    }
+
+    res.json({ res: "deleted" });
   })
 );
 
