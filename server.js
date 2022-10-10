@@ -1,10 +1,16 @@
 /*eslint-env es6*/
 const express = require("express");
+
+/* pg-format to ensure no SQL injections */
 const format = require("pg-format");
 const bodyParser = require("body-parser");
 const { Pool, Client } = require("pg");
 const fs = require("fs");
 const asyncHandler = require("express-async-handler");
+
+// routes
+const testRoutes = require("./routes/testRoutes");
+const postRoutes = require("./routes/postRoutes");
 
 const app = express();
 
@@ -22,6 +28,7 @@ const client = new Client({
 });
 client.connect();
 */
+
 const client = new Client({
   user: "postgres",
   host: "culpa.cl1fcgklxgqn.us-west-2.rds.amazonaws.com",
@@ -49,267 +56,196 @@ const connections = async () => {
   setTimeout(() => {
     console.log("connecting...");
     client.connect();
-  }, 30000);
+  }, 3000);
 };
 connections();
 */
 
-app.get(
-  "/hello-world",
-  asyncHandler(async (req, res, next) => {
-    res.json({ courses: "hello world" });
-  })
-);
+app.use("/test", testRoutes);
+app.use("/post", postRoutes);
 
-const months = {
-  January: 1,
-  February: 2,
-  March: 3,
-  April: 4,
-  May: 5,
-  June: 6,
-  July: 7,
-  August: 8,
-  September: 9,
-  October: 10,
-  November: 11,
-  December: 12,
-};
-
-/* get rid of any recent reviews to prevent clogging. eliminate everything with 2022 in date */
 app.get(
   "/cleanup",
   asyncHandler(async (req, res, next) => {
-    const sql = format(
-      "SELECT * FROM reviews WHERE reviews.date LIKE '%2022%';",
-      req.params.term
-    );
-
-    const results = await client.query(sql);
-
-    const deleted = [];
-    for (const result of results.rows) {
-      const removeSql = format(
-        "DELETE FROM reviews WHERE reviews.review_id = '%s';",
-        result.review_id
-      );
-      deleted.push({
-        review_id: result.review_id,
-        prof_id: result.prof_id,
-        course_id: result.course_id,
-      });
-      await client.query(removeSql);
-    }
-
-    /*
-     * For each deleted review, check to see if there are other reviews with the same
-     * course_id and professor_id. If so, then continue. Otherwise, there is now an empty
-     * page associated with the teaches_course table, which we can safely delete.
-     */
-    for (const review of deleted) {
-      const checkReviewsSql = format(
-        "SELECT reviews.review_id FROM reviews WHERE reviews.prof_id = '%s' AND reviews.course_id = '%s';",
-        review.prof_id,
-        review.course_id
-      );
-      const removeTeachesCourseSql = format(
-        "DELETE FROM teaches_course WHERE teaches_course.prof_id = '%s' AND teaches_course.course_id = '%s';",
-        review.prof_id,
-        review.course_id
+    try {
+      const sql = format(
+        "SELECT * FROM reviews WHERE reviews.date LIKE '%2022%';",
+        req.params.term
       );
 
-      let res = await client.query(checkReviewsSql);
+      const results = await client.query(sql);
 
-      if (res.rows.length === 0) {
-        await client.query(removeTeachesCourseSql);
+      const deleted = [];
+      for (const result of results.rows) {
+        const removeSql = format(
+          "DELETE FROM reviews WHERE reviews.review_id = '%s';",
+          result.review_id
+        );
+        deleted.push({
+          review_id: result.review_id,
+          prof_id: result.prof_id,
+          course_id: result.course_id,
+        });
+        await client.query(removeSql);
       }
+
+      /*
+       * For each deleted review, check to see if there are other reviews with the same
+       * course_id and professor_id. If so, then continue. Otherwise, there is now an empty
+       * page associated with the teaches_course table, which we can safely delete.
+       */
+      for (const review of deleted) {
+        const checkReviewsSql = format(
+          "SELECT reviews.review_id FROM reviews WHERE reviews.prof_id = '%s' AND reviews.course_id = '%s';",
+          review.prof_id,
+          review.course_id
+        );
+        const removeTeachesCourseSql = format(
+          "DELETE FROM teaches_course WHERE teaches_course.prof_id = '%s' AND teaches_course.course_id = '%s';",
+          review.prof_id,
+          review.course_id
+        );
+
+        let res = await client.query(checkReviewsSql);
+
+        if (res.rows.length === 0) {
+          await client.query(removeTeachesCourseSql);
+        }
+      }
+
+      res.json({ res: deleted });
+    } catch (e) {
+      res.json({ serverError: e });
     }
-
-    res.json({ res: deleted });
-  })
-);
-
-app.post(
-  "/remove-post/:term",
-  asyncHandler(async (req, res, next) => {
-    console.log("term : ", req.params.term);
-    req.params.term;
-    const sql = format(
-      "SELECT * FROM reviews WHERE reviews.review_id = '%s' AND reviews.date LIKE '%2022%';",
-      req.params.term
-    );
-
-    console.log("sql : ", sql);
-
-    let results = (await client.query(sql)).rows[0];
-    console.log("results : ", results);
-
-    const removeSql = format(
-      "DELETE FROM reviews WHERE reviews.review_id = '%s';",
-      results.review_id
-    );
-    const { data } = await client.query(removeSql);
-    console.log("data ", data);
-
-    /*
-     * For each deleted review, check to see if there are other reviews with the same
-     * course_id and professor_id. If so, then continue. Otherwise, there is now an empty
-     * page associated with the teaches_course table, which we can safely delete.
-     */
-    const checkReviewsSql = format(
-      "SELECT reviews.review_id FROM reviews WHERE reviews.prof_id = '%s' AND reviews.course_id = '%s';",
-      results.prof_id,
-      results.course_id
-    );
-    const removeTeachesCourseSql = format(
-      "DELETE FROM teaches_course WHERE teaches_course.prof_id = '%s' AND teaches_course.course_id = '%s';",
-      results.prof_id,
-      results.course_id
-    );
-
-    results = await client.query(checkReviewsSql);
-
-    if (results.rows.length === 0) {
-      await client.query(removeTeachesCourseSql);
-    }
-
-    res.json({ res: "deleted" });
   })
 );
 
 app.get(
   "/search-prof-name/:term",
   asyncHandler(async (req, res, next) => {
-    const sql = format(
-      "SELECT professors.name, professors.prof_id, professors.nugget FROM professors WHERE professors.name LIKE '%%%s%%%';",
-      req.params.term
-    );
-    const result = await client.query(sql);
-    console.log("res : ", result);
-    res.json({ profs: result.rows });
+    try {
+      const sql = format(
+        "SELECT professors.name, professors.prof_id, professors.nugget FROM professors WHERE professors.name LIKE '%%%s%%%';",
+        req.params.term
+      );
+      const result = await client.query(sql);
+      console.log("res : ", result);
+      res.json({ results: result.rows });
+    } catch (e) {
+      res.json({ serverError: e });
+    }
   })
 );
 
 app.get(
   "/search-course-name/:term",
   asyncHandler(async (req, res, next) => {
-    const sql = format(
-      "SELECT courses.name, courses.course_id FROM courses WHERE courses.name LIKE '%%%s%%%';",
-      req.params.term
-    );
-    const result = await client.query(sql);
-    console.log("res : ", result);
-    res.json({ courses: result.rows });
+    try {
+      const sql = format(
+        "SELECT courses.name, courses.course_id FROM courses WHERE courses.name LIKE '%%%s%%%';",
+        req.params.term
+      );
+      const result = await client.query(sql);
+      console.log("res : ", result);
+      res.json({ results: result.rows });
+    } catch (e) {
+      res.json({ serverError: e });
+    }
   })
 );
 
 app.get(
   "/get-all-profs",
   asyncHandler(async (req, res, next) => {
-    const sql = format(
-      "SELECT professors.name, professors.prof_id, professors.nugget FROM professors;"
-    );
-    const result = await client.query(sql);
-    console.log("res : ", result);
-    res.json({ profs: result.rows });
+    try {
+      const sql = format(
+        "SELECT professors.name, professors.prof_id, professors.nugget FROM professors;"
+      );
+      const result = await client.query(sql);
+      console.log("res : ", result);
+      res.json({ profs: result.rows });
+    } catch (e) {
+      res.json({ serverError: e });
+    }
   })
 );
 
 app.get(
   "/get-professor-reviews/:term",
   asyncHandler(async (req, res, next) => {
-    // return professor info, the reviews, and the names of the courses,
-    const reviews_sql = format(
-      "SELECT reviews.agree, reviews.disagree, reviews.content, reviews.workload, reviews.date, reviews.review_id, courses.name, courses.course_id from reviews INNER JOIN courses ON courses.course_id = reviews.course_id WHERE reviews.prof_id = '%s';",
-      req.params.term
-    );
-    const prof_sql = format(
-      "SELECT * from professors WHERE professors.prof_id = '%s';",
-      req.params.term
-    );
+    try {
+      // return professor info, the reviews, and the names of the courses,
+      const reviews_sql = format(
+        "SELECT reviews.agree, reviews.disagree, reviews.content, reviews.workload, reviews.date, reviews.review_id, courses.name, courses.course_id from reviews INNER JOIN courses ON courses.course_id = reviews.course_id WHERE reviews.prof_id = '%s';",
+        req.params.term
+      );
+      const prof_sql = format(
+        "SELECT * from professors WHERE professors.prof_id = '%s';",
+        req.params.term
+      );
 
-    const return_value = { professor: {}, reviews: [] };
+      const return_value = { professor: {}, reviews: [] };
 
-    const results = await Promise.all([
-      client.query(reviews_sql),
-      client.query(prof_sql),
-    ]);
+      const results = await Promise.all([
+        client.query(reviews_sql),
+        client.query(prof_sql),
+      ]);
 
-    const valid_revs = results[0].rows.filter((rev) => rev.name !== "0");
-    return_value.reviews = valid_revs;
-    return_value.professor = results[1].rows;
-    res.json({ results: return_value });
+      const valid_revs = results[0].rows.filter((rev) => rev.name !== "0");
+      return_value.reviews = valid_revs;
+      return_value.professor = results[1].rows;
+      res.json({ results: return_value });
+    } catch (e) {
+      res.json({ serverError: e });
+    }
   })
 );
 
 app.get(
   "/get-course-reviews/:term",
   asyncHandler(async (req, res, next) => {
-    // return professor info, the reviews, and the names of the courses,
-    const reviews_sql = format(
-      "SELECT reviews.agree, reviews.disagree, reviews.content, reviews.workload, reviews.date, reviews.review_id, professors.name, professors.prof_id from reviews INNER JOIN professors ON professors.prof_id = reviews.prof_id WHERE reviews.course_id = '%s';",
-      req.params.term
-    );
-    const course_sql = format(
-      "SELECT * from courses WHERE courses.course_id = '%s';",
-      req.params.term
-    );
+    try {
+      // return professor info, the reviews, and the names of the courses,
+      const reviews_sql = format(
+        "SELECT reviews.agree, reviews.disagree, reviews.content, reviews.workload, reviews.date, reviews.review_id, professors.name, professors.prof_id from reviews INNER JOIN professors ON professors.prof_id = reviews.prof_id WHERE reviews.course_id = '%s';",
+        req.params.term
+      );
+      const course_sql = format(
+        "SELECT * from courses WHERE courses.course_id = '%s';",
+        req.params.term
+      );
 
-    const return_value = { course: {}, reviews: [] };
+      const return_value = { course: {}, reviews: [] };
 
-    const results = await Promise.all([
-      client.query(reviews_sql),
-      client.query(course_sql),
-    ]);
+      const results = await Promise.all([
+        client.query(reviews_sql),
+        client.query(course_sql),
+      ]);
 
-    return_value.reviews = results[0].rows;
-    return_value.course = results[1].rows;
-    res.json({ results: return_value });
+      return_value.reviews = results[0].rows;
+      return_value.course = results[1].rows;
+      res.json({ results: return_value });
+    } catch (e) {
+      res.json({ serverError: e });
+    }
   })
 );
-
-/*
-app.get("/get-course-reviews/:term", (req, res) => {
-  // const sql_reviews = format("SELECT professors.name, professors.prof_id, professors.nugget FROM professors WHERE professors.name LIKE '%%%s%%';", req.params.term)
-  // const prof_data = format("SELECT professors.name, professors.prof_id, professors.nugget FROM professors WHERE professors.name LIKE '%%%s%%';", req.params.term)
-
-  // want to return professor info, the reviews, and the names of the courses
-
-  // for now, try to find all data on all tables
-  // const sql = format("SELECT * from reviews WHERE reviews.prof_id = '%s';", req.params.term)
-  const sql = format(
-    "SELECT reviews.agree, reviews.disagree, reviews.content, reviews.workload, reviews.date, professors.name, professors.prof_id from reviews INNER JOIN professors ON professors.prof_id = reviews.prof_id WHERE reviews.course_id = '%s';",
-    req.params.term
-  );
-  const sql2 = format(
-    "SELECT * from courses WHERE courses.course_id = '%s';",
-    req.params.term
-  );
-
-  const return_value = { course: {}, reviews: [] };
-
-  client.query(sql).then((result, err) => {
-    const valid_revs = result.rows.filter((rev) => rev.name !== "0");
-    return_value.reviews = valid_revs;
-    client.query(sql2).then((result, err) => {
-      return_value.course = result.rows;
-      res.json({ results: return_value });
-    });
-  });
-});
-*/
 
 app.get(
   "/match-term-all/:term",
   asyncHandler(async (req, res, next) => {
-    const sql = format(
-      "SELECT courses.name AS name, courses.course_id AS id, 'course' as type FROM courses WHERE courses.name LIKE '%%%s%%' UNION ALL SELECT professors.name, professors.prof_id, professors.nugget FROM professors WHERE professors.name LIKE '%%%s%%';",
-      req.params.term,
-      req.params.term
-    );
+    try {
+      const sql = format(
+        "SELECT courses.name AS name, courses.course_id AS id, 'course' as type FROM courses WHERE courses.name LIKE '%%%s%%' UNION ALL SELECT professors.name, professors.prof_id, professors.nugget FROM professors WHERE professors.name LIKE '%%%s%%';",
+        req.params.term,
+        req.params.term
+      );
 
-    const result = await client.query(sql);
-    res.json({ results: result.rows });
+      const result = await client.query(sql);
+      res.json({ results: result.rows });
+    } catch (e) {
+      res.json({ serverError: e });
+    }
   })
 );
 
@@ -366,94 +302,102 @@ const getDate = () => {
 
 // req.body.workload, req.body.content, req.body.professor, req.body.course
 const createPost = async (workload, content, errors, ids) => {
-  console.log("professor : ", ids.professor);
-  console.log("course : ", ids.course);
-  // create a new random id for our new review. chances of collision are near zero
-  const newReviewId = Math.random().toString(36).slice(2);
-  const sql_teaches_course = format(
-    "SELECT * FROM teaches_course WHERE teaches_course.course_id = '%s' AND teaches_course.prof_id ='%s';",
-    ids.course,
-    ids.professor
-  );
+  try {
+    console.log("professor : ", ids.professor);
+    console.log("course : ", ids.course);
+    // create a new random id for our new review. chances of collision are near zero
+    const newReviewId = Math.random().toString(36).slice(2);
+    const sql_teaches_course = format(
+      "SELECT * FROM teaches_course WHERE teaches_course.course_id = '%s' AND teaches_course.prof_id ='%s';",
+      ids.course,
+      ids.professor
+    );
 
-  const sql_make_teaches_course = format(
-    "INSERT INTO teaches_course(prof_id, course_id) VALUES ('%s', '%s');",
-    ids.professor,
-    ids.course
-  );
+    const sql_make_teaches_course = format(
+      "INSERT INTO teaches_course(prof_id, course_id) VALUES ('%s', '%s');",
+      ids.professor,
+      ids.course
+    );
 
-  const sql_create_review = format(
-    "INSERT INTO reviews(review_id, date, content, workload, agree, disagree, prof_id, course_id) VALUES ('%s', '%s', '%s', '%s', %L, %L, '%s', '%s');",
-    newReviewId,
-    getDate(),
-    content,
-    workload,
-    0,
-    0,
-    ids.professor,
-    ids.course
-  );
+    const sql_create_review = format(
+      "INSERT INTO reviews(review_id, date, content, workload, agree, disagree, prof_id, course_id) VALUES ('%s', '%s', '%s', '%s', %L, %L, '%s', '%s');",
+      newReviewId,
+      getDate(),
+      content,
+      workload,
+      0,
+      0,
+      ids.professor,
+      ids.course
+    );
 
-  const teaches_course = await client.query(sql_teaches_course);
-  console.log(teaches_course.rows);
+    const teaches_course = await client.query(sql_teaches_course);
+    console.log(teaches_course.rows);
 
-  // doesn't already exist, have to make it
-  if (!teaches_course) {
-    await client.query(sql_make_teaches_course);
+    // doesn't already exist, have to make it
+    if (!teaches_course) {
+      await client.query(sql_make_teaches_course);
+    }
+
+    // now create the actual review
+    const results = await client.query(sql_create_review);
+    errors.createdReview.review_id = newReviewId;
+    errors.createdReview.prof_id = ids.professor;
+    errors.createdReview.course_id = ids.course;
+    console.log("results from creation : ", results);
+  } catch (e) {
+    res.json({ serverError: e });
   }
-
-  // now create the actual review
-  const results = await client.query(sql_create_review);
-  errors.createdReview.review_id = newReviewId;
-  errors.createdReview.prof_id = ids.professor;
-  errors.createdReview.course_id = ids.course;
-  console.log("results from creation : ", results);
 };
 
 app.post(
   "/submit",
   asyncHandler(async (req, res, next) => {
-    console.log("body of post : ", req.body);
-    const ids = {};
-    let prof_results;
-    let prof_already_teaches = false;
-    let errors = {
-      professor: false,
-      course: false,
-      workload: false,
-      content: false,
-      other: false,
-      createdReview: {},
-    };
+    try {
+      console.log("body of post : ", req.body);
+      const ids = {};
+      let prof_results;
+      let prof_already_teaches = false;
+      let errors = {
+        professor: false,
+        course: false,
+        workload: false,
+        content: false,
+        other: false,
+        createdReview: {},
+      };
 
-    // make sure workload and content exist
-    if (!req.body.workload) {
-      console.log("errors in workload ! ");
-      errors.workload = true;
-    }
-    if (!req.body.content) {
-      console.log("errors in content ! ");
-      errors.content = true;
-    }
+      // make sure workload and content exist
+      if (!req.body.workload) {
+        console.log("errors in workload ! ");
+        errors.workload = true;
+      }
+      if (!req.body.content) {
+        console.log("errors in content ! ");
+        errors.content = true;
+      }
 
-    // makes sure that the professor and course provided exist in the db
-    await checkExistence(req.body.professor, req.body.course, errors, ids);
+      // makes sure that the professor and course provided exist in the db
+      await checkExistence(req.body.professor, req.body.course, errors, ids);
 
-    console.log("ids after check existence : ", ids);
+      console.log("ids after check existence : ", ids);
 
-    if (
-      errors.workload ||
-      errors.professor ||
-      errors.course ||
-      errors.content
-    ) {
-      res.json({ ...errors });
-    }
+      if (
+        errors.workload ||
+        errors.professor ||
+        errors.course ||
+        errors.content
+      ) {
+        res.json({ ...errors });
+      }
 
-    // otherwise - we are good to add it.
-    else {
-      await createPost(req.body.workload, req.body.content, errors, ids);
-      res.json({ ...errors });
+      // otherwise - we are good to add it.
+      else {
+        await createPost(req.body.workload, req.body.content, errors, ids);
+        res.json({ ...errors });
+      }
+    } catch (e) {
+      res.json({ serverError: e });
     }
   })
 );
@@ -468,20 +412,24 @@ app.get("/get-popular-courses-full", (req, res) => {
 });
 
 app.get("/get-chart-data", (req, res) => {
-  fs.readFile("./cleanedrevs4.json", "utf8", function (err, data) {
-    const data_json_scatter = JSON.parse(data);
-    fs.readFile("./bardatatotal.json", "utf8", function (err, data2) {
-      const data_json_bar = JSON.parse(data2);
-      fs.readFile("./linedatatotal.json", "utf8", function (err, data3) {
-        const data_json_line = JSON.parse(data3);
-        res.json({
-          scatter: data_json_scatter,
-          bar: data_json_bar,
-          line: data_json_line,
+  try {
+    fs.readFile("./scatterdatatotal.json", "utf8", function (err, data) {
+      const data_json_scatter = JSON.parse(data);
+      fs.readFile("./bardatatotal.json", "utf8", function (err, data2) {
+        const data_json_bar = JSON.parse(data2);
+        fs.readFile("./linedatatotal.json", "utf8", function (err, data3) {
+          const data_json_line = JSON.parse(data3);
+          res.json({
+            scatter: data_json_scatter,
+            bar: data_json_bar,
+            line: data_json_line,
+          });
         });
       });
     });
-  });
+  } catch (e) {
+    res.json({ serverError: e });
+  }
 });
 
 app.get("/fill-line", (req, res) => {
