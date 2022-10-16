@@ -11,6 +11,10 @@ const asyncHandler = require("express-async-handler");
 // routes
 const testRoutes = require("./routes/testRoutes");
 const postRoutes = require("./routes/postRoutes");
+const profRoutes = require("./routes/profRoutes");
+const courseRoutes = require("./routes/courseRoutes");
+const reviewEntityRoutes = require("./routes/reviewEntityRoutes");
+const reviewRoutes = require("./routes/reviewRoutes");
 
 const app = express();
 
@@ -63,6 +67,10 @@ connections();
 
 app.use("/test", testRoutes);
 app.use("/post", postRoutes);
+app.use("/professor", profRoutes);
+app.use("/course", courseRoutes);
+app.use("/reviewentity", reviewEntityRoutes);
+app.use("/review", reviewRoutes);
 
 app.get(
   "/cleanup",
@@ -120,8 +128,9 @@ app.get(
   })
 );
 
+/*
 app.get(
-  "/search-prof-name/:term",
+  "/profname/:term",
   asyncHandler(async (req, res, next) => {
     try {
       const sql = format(
@@ -136,7 +145,9 @@ app.get(
     }
   })
 );
+*/
 
+/*
 app.get(
   "/search-course-name/:term",
   asyncHandler(async (req, res, next) => {
@@ -153,7 +164,9 @@ app.get(
     }
   })
 );
+*/
 
+/*
 app.get(
   "/get-all-profs",
   asyncHandler(async (req, res, next) => {
@@ -169,7 +182,9 @@ app.get(
     }
   })
 );
+*/
 
+/*
 app.get(
   "/get-professor-reviews/:term",
   asyncHandler(async (req, res, next) => {
@@ -200,7 +215,9 @@ app.get(
     }
   })
 );
+*/
 
+/*
 app.get(
   "/get-course-reviews/:term",
   asyncHandler(async (req, res, next) => {
@@ -230,7 +247,9 @@ app.get(
     }
   })
 );
+*/
 
+/*
 app.get(
   "/match-term-all/:term",
   asyncHandler(async (req, res, next) => {
@@ -248,7 +267,9 @@ app.get(
     }
   })
 );
+*/
 
+/*
 const checkExistence = async (prof, course, db_errors, ids) => {
   const sql_prof = format(
     "SELECT * FROM professors WHERE professors.name = '%s';",
@@ -275,7 +296,9 @@ const checkExistence = async (prof, course, db_errors, ids) => {
     ids.course = existenceResults[1].rows[0].course_id;
   }
 };
+*/
 
+/*
 const getDate = () => {
   const numToMonth = {
     1: "January",
@@ -299,8 +322,10 @@ const getDate = () => {
   today = numToMonth[mm] + " " + dd + ", " + yyyy;
   return today;
 };
+*/
 
 // req.body.workload, req.body.content, req.body.professor, req.body.course
+/*
 const createPost = async (workload, content, errors, ids) => {
   try {
     console.log("professor : ", ids.professor);
@@ -349,7 +374,9 @@ const createPost = async (workload, content, errors, ids) => {
     res.json({ serverError: e });
   }
 };
+*/
 
+/*
 app.post(
   "/submit",
   asyncHandler(async (req, res, next) => {
@@ -401,6 +428,7 @@ app.post(
     }
   })
 );
+*/
 
 app.get("/get-popular-courses-full", (req, res) => {
   // const sql = format("SELECT courses.name, reviews.date from courses INNER JOIN reviews ON reviews.course_id = courses.course_id WHERE courses.name IN ('operating systems i', 'introduction to databases', 'programming languages and translators', 'artificial intelligence', 'analysis of algorithms i', 'user interface design')")
