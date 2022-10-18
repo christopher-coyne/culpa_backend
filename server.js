@@ -37,6 +37,8 @@ const client = new Client({
 client.connect();
 */
 /* process.env.DB_HOST */
+
+/*
 const db_info = {
   user: "postgres",
   host: "db",
@@ -50,11 +52,12 @@ const client = new Client(db_info);
 
 const connections = async () => {
   setTimeout(() => {
-    console.log("connecting...");
+    console.log("connecting to db image...");
     client.connect();
-  }, 3000);
+  }, 5000);
 };
 connections();
+*/
 
 app.use("/test", testRoutes);
 app.use("/post", postRoutes);
