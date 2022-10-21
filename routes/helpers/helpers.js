@@ -15,7 +15,6 @@ const checkExistence = async (prof, course, db_errors, ids) => {
     client.query(sql_prof),
     client.query(sql_course),
   ]);
-  console.log("existence results : ", existenceResults[1].rows);
   if (existenceResults[0].rows.length == 0) {
     db_errors.professor = true;
   } else {
@@ -54,8 +53,6 @@ const getDate = () => {
 
 const createPost = async (workload, content, errors, ids) => {
   try {
-    console.log("professor : ", ids.professor);
-    console.log("course : ", ids.course);
     // create a new random id for our new review. chances of collision are near zero
     const newReviewId = Math.random().toString(36).slice(2);
     const sql_teaches_course = format(
@@ -91,11 +88,10 @@ const createPost = async (workload, content, errors, ids) => {
     }
 
     // now create the actual review
-    const results = await client.query(sql_create_review);
+    await client.query(sql_create_review);
     errors.createdReview.review_id = newReviewId;
     errors.createdReview.prof_id = ids.professor;
     errors.createdReview.course_id = ids.course;
-    console.log("results from creation : ", results);
   } catch (e) {
     res.json({ serverError: e });
   }
